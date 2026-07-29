@@ -1,0 +1,5 @@
+package com.booking.seatbooking.repository;
+
+package com.booking.seatbooking.dto;
+
+public record AuthResponse(String token, String username, long expiresInSeconds) {}

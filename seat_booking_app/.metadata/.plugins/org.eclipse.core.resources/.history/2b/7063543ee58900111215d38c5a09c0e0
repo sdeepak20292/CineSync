@@ -1,0 +1,5 @@
+package com.booking.seatbooking.entity;
+
+public class User {
+
+}

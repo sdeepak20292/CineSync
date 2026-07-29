@@ -1,0 +1,5 @@
+package com.booking.seatbooking.repository;
+
+public record AuthResponse() {
+
+}

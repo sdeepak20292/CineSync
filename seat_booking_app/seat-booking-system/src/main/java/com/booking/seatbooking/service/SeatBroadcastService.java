@@ -1,0 +1,20 @@
+package com.booking.seatbooking.service;
+
+import com.booking.seatbooking.dto.SeatUpdateEvent;
+import com.booking.seatbooking.entity.Seat;
+import lombok.RequiredArgsConstructor;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.stereotype.Service;
+
+@Service
+@RequiredArgsConstructor
+public class SeatBroadcastService {
+
+    private final SimpMessagingTemplate messagingTemplate;
+    
+    public void broadcastSeatUpdate(Seat seat) {
+        Long showId = seat.getShow().getId();
+        SeatUpdateEvent event = new SeatUpdateEvent(seat.getId(), seat.getSeatNumber(), seat.getStatus());
+        messagingTemplate.convertAndSend("/topic/shows/" + showId, event);
+    }
+}

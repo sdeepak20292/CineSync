@@ -1,0 +1,110 @@
+package com.booking.seatbooking.concurrency;
+
+import com.booking.seatbooking.entity.Seat;
+import com.booking.seatbooking.entity.SeatStatus;
+import com.booking.seatbooking.entity.Show;
+import com.booking.seatbooking.exception.SeatUnavailableException;
+import com.booking.seatbooking.repository.SeatRepository;
+import com.booking.seatbooking.repository.ShowRepository;
+import com.booking.seatbooking.service.SeatService;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
+
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
+/**
+ * THE core proof-of-correctness for this project.
+ *
+ * Fires N concurrent requests at the SAME seat and asserts that exactly one
+ * of them wins. This is the test you screen-record or paste the output of
+ * into your README / resume portfolio - "load-tested concurrent booking
+ * attempts, verified zero double-bookings" is a much stronger line when you
+ * can point to a passing test that actually proves it.
+ */
+@SpringBootTest
+class SeatHoldConcurrencyTest {
+
+    @Autowired
+    private SeatService seatService;
+    @Autowired
+    private ShowRepository showRepository;
+    @Autowired
+    private SeatRepository seatRepository;
+
+    private Long contestedSeatId;
+
+    @BeforeEach
+    void setUp() {
+        Show show = new Show();
+        show.setTitle("Concurrency Test Show");
+        show.setVenue("Test Venue");
+        show.setStartTime(LocalDateTime.now().plusDays(1));
+        showRepository.save(show);
+
+        Seat seat = new Seat();
+        seat.setShow(show);
+        seat.setSeatNumber("A1");
+        seat.setStatus(SeatStatus.AVAILABLE);
+        seatRepository.save(seat);
+
+        contestedSeatId = seat.getId();
+    }
+
+    @Test
+    void onlyOneThreadCanHoldTheSameSeatUnderConcurrentLoad() throws InterruptedException {
+        int numberOfConcurrentUsers = 50;
+
+        ExecutorService pool = Executors.newFixedThreadPool(numberOfConcurrentUsers);
+        CountDownLatch readyLatch = new CountDownLatch(numberOfConcurrentUsers);
+        CountDownLatch startLatch = new CountDownLatch(1);
+        CountDownLatch doneLatch = new CountDownLatch(numberOfConcurrentUsers);
+
+        AtomicInteger successCount = new AtomicInteger(0);
+        AtomicInteger conflictCount = new AtomicInteger(0);
+
+        for (int i = 0; i < numberOfConcurrentUsers; i++) {
+            String userId = "user-" + i;
+            pool.submit(() -> {
+                try {
+                    readyLatch.countDown();
+                    // block every thread here so they all fire as close to
+                    // simultaneously as possible - this is what actually
+                    // creates the race condition instead of a polite queue
+                    startLatch.await();
+
+                    seatService.holdSeat(contestedSeatId, userId);
+                    successCount.incrementAndGet();
+                } catch (SeatUnavailableException | ObjectOptimisticLockingFailureException expected) {
+                    conflictCount.incrementAndGet();
+                } catch (Exception unexpected) {
+                    unexpected.printStackTrace();
+                } finally {
+                    doneLatch.countDown();
+                }
+            });
+        }
+
+        readyLatch.await(5, TimeUnit.SECONDS);
+        startLatch.countDown(); // release all threads at once
+        doneLatch.await(10, TimeUnit.SECONDS);
+        pool.shutdown();
+
+        System.out.printf("Concurrent hold attempts: %d | Succeeded: %d | Rejected: %d%n",
+                numberOfConcurrentUsers, successCount.get(), conflictCount.get());
+
+        assertEquals(1, successCount.get(), "Exactly one thread should win the seat hold");
+        assertEquals(numberOfConcurrentUsers - 1, conflictCount.get(), "Everyone else should be rejected");
+
+        List<Seat> seats = seatRepository.findByShowId(seatRepository.findById(contestedSeatId).get().getShow().getId());
+        long heldCount = seats.stream().filter(s -> s.getStatus() == SeatStatus.HELD).count();
+        assertEquals(1, heldCount, "DB should reflect exactly one HELD seat, never more");
+    }
+}

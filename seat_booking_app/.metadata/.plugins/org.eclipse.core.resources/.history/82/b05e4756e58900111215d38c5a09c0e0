@@ -1,5 +1,0 @@
-package com.booking.seatbooking.repository;
-
-public interface UserRepository {
-
-}

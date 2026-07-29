@@ -1,5 +1,0 @@
-package secuirity;
-
-public class JwtAuthenticationFilter {
-
-}

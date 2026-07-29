@@ -1,5 +1,0 @@
-package com.booking.seatbooking.repository;
-
-import jakarta.validation.constraints.NotBlank;
-
-public record LoginRequest(@NotBlank String username, @NotBlank String password) {}

@@ -1,5 +1,0 @@
-package com.booking.seatbooking.entity;
-
-public enum ShowCategory {
-
-}
